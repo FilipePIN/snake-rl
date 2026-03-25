@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -66,7 +66,7 @@
 
   .layout {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 20px;
     max-width: 1100px;
     margin: 0 auto;
@@ -77,6 +77,8 @@
 
   canvas#game {
     display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
     border: 1px solid var(--border2);
     border-radius: 6px;
     background: #0a0c10;
@@ -223,16 +225,16 @@
 </head>
 <body>
 
-<h1 id="status-title" class="stopped">Snake RL — aguardando início</h1>
+<h1 id="status-title" class="stopped">Snake RL — waiting to start</h1>
 
 <div class="layout">
   <!-- LEFT -->
   <div class="left">
-    <canvas id="game" width="400" height="400"></canvas>
+    <canvas id="game"></canvas>
     <div class="controls">
-      <button id="btn-start" class="active" onclick="startTraining()">▶ Iniciar</button>
-      <button id="btn-stop" onclick="stopTraining()">⏸ Pausar</button>
-      <button id="btn-reset" class="danger" onclick="resetTraining()">↺ Reiniciar</button>
+      <button id="btn-start" class="active" onclick="startTraining()">▶ Start</button>
+      <button id="btn-stop" onclick="stopTraining()">⏸ Pause</button>
+      <button id="btn-reset" class="danger" onclick="resetTraining()">↺ Restart</button>
     </div>
   </div>
 
@@ -241,19 +243,19 @@
     <!-- Stats -->
     <div class="stats-grid">
       <div class="stat">
-        <div class="stat-label">Episódio</div>
+        <div class="stat-label">Episode</div>
         <div class="stat-value" id="s-episode">0</div>
       </div>
       <div class="stat">
-        <div class="stat-label">Score</div>
+        <div class="stat-label">Last Score</div>
         <div class="stat-value green" id="s-score">0</div>
       </div>
       <div class="stat">
-        <div class="stat-label">Média (50)</div>
+        <div class="stat-label">Average (50)</div>
         <div class="stat-value amber" id="s-avg">0</div>
       </div>
       <div class="stat">
-        <div class="stat-label">Recorde</div>
+        <div class="stat-label">Best Score</div>
         <div class="stat-value" id="s-best">0</div>
       </div>
     </div>
@@ -261,7 +263,7 @@
     <!-- Epsilon bar -->
     <div class="epsilon-bar-wrap">
       <div class="epsilon-row">
-        <span>Exploração (ε-greedy)</span>
+        <span>Exploration (ε-greedy)</span>
         <span id="eps-val">100%</span>
       </div>
       <div class="bar-track">
@@ -271,7 +273,7 @@
 
     <!-- Reward chart -->
     <div class="chart-card">
-      <div class="chart-label">Score por episódio</div>
+      <div class="chart-label">Score per Episode</div>
       <canvas id="reward-chart" height="160"></canvas>
     </div>
 
@@ -284,14 +286,24 @@
 // ── Canvas setup ──────────────────────────────────────────────
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
-const CELL   = 20;
 const GW = 20, GH = 20;
 
+function syncCanvasSize() {
+  const w = canvas.clientWidth;
+  if (canvas.width !== w) {
+    canvas.width  = w;
+    canvas.height = w;
+  }
+}
+
 function drawGame(data) {
+  syncCanvasSize();
+  const CELL = canvas.width / GW;
+
   ctx.fillStyle = '#0a0c10';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Grid sutil
+  // Grid
   ctx.strokeStyle = '#13161e';
   ctx.lineWidth = 0.5;
   for (let x = 0; x <= GW; x++) {
@@ -301,7 +313,7 @@ function drawGame(data) {
     ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(GW * CELL, y * CELL); ctx.stroke();
   }
 
-  // Cobra
+  // Snake
   data.snake.forEach(([x, y], i) => {
     const t = i === 0 ? 1 : 1 - (i / data.snake.length) * 0.65;
     ctx.fillStyle = i === 0 ? '#22c55e' : `rgba(34,197,94,${t.toFixed(2)})`;
@@ -310,7 +322,7 @@ function drawGame(data) {
     ctx.fill();
   });
 
-  // Comida
+  // Food
   const [fx, fy] = data.food;
   ctx.fillStyle = '#ef4444';
   ctx.beginPath();
@@ -324,14 +336,17 @@ function drawGame(data) {
 }
 
 function drawIdle() {
+  syncCanvasSize();
   ctx.fillStyle = '#0a0c10';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#252a38';
   ctx.font = '400 13px JetBrains Mono, monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('pressione ▶ Iniciar', canvas.width / 2, canvas.height / 2);
+  ctx.fillText('press ▶ Start', canvas.width / 2, canvas.height / 2);
   ctx.textAlign = 'left';
 }
+
+new ResizeObserver(() => drawIdle()).observe(canvas);
 drawIdle();
 
 // ── Chart.js ──────────────────────────────────────────────────
@@ -356,7 +371,7 @@ const rewardChart = new Chart(chartCtx, {
         backgroundColor: 'rgba(34,197,94,0.06)',
       },
       {
-        label: 'Média 50',
+        label: 'Average (50)',
         data: [],
         borderColor: '#f59e0b',
         borderWidth: 2,
@@ -390,7 +405,7 @@ function updateChart(history, avgHistory) {
   rewardChart.update('none');
 }
 
-// Histórico de médias
+// ── History of averages
 let avgHistory = [];
 
 // ── Socket.IO ─────────────────────────────────────────────────
@@ -409,7 +424,7 @@ socket.on('episode_end', data => {
   document.getElementById('s-best').textContent    = data.best;
   setEpsilon(data.epsilon);
 
-  // Médias rolling
+  // Rolling averages
   if (data.history.length === 0) { avgHistory = []; }
   else {
     const h = data.history;
@@ -467,7 +482,7 @@ function addLog(data) {
   if (logCount > 200) log.removeChild(log.firstChild);
 }
 
-// ── Controles ─────────────────────────────────────────────────
+// ── Controls ──────────────────────────────────────────────────
 function startTraining() { socket.emit('start'); }
 function stopTraining()  { socket.emit('stop');  }
 function resetTraining() {
