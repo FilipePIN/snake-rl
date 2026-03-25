@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake RL — Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #13161e;
+    --card:     #191d28;
+    --border:   #252a38;
+    --border2:  #2e3448;
+    --green:    #22c55e;
+    --green-d:  #16a34a;
+    --green-dim:#0d4a24;
+    --amber:    #f59e0b;
+    --red:      #ef4444;
+    --blue:     #3b82f6;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Space Grotesk', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 24px 20px;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1::before {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  h1.stopped::before { background: var(--muted); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.85); }
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 20px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  /* LEFT: canvas + controls */
+  .left { display: flex; flex-direction: column; gap: 16px; }
+
+  canvas#game {
+    display: block;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    background: #0a0c10;
+    image-rendering: pixelated;
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+  }
+
+  button {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 0;
+    border-radius: 5px;
+    border: 1px solid var(--border2);
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--card);
+    color: var(--muted);
+  }
+  button:hover { border-color: var(--green); color: var(--green); }
+  button.active { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+  button.danger:hover { border-color: var(--red); color: var(--red); }
+
+  /* RIGHT: metrics + chart */
+  .right { display: flex; flex-direction: column; gap: 16px; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 12px 10px;
+  }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    flex: 1;
+  }
+  .chart-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 14px;
+  }
+
+  .epsilon-bar-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .epsilon-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .epsilon-row span:first-child {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .epsilon-row span:last-child {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--amber);
+  }
+  .bar-track {
+    height: 5px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: var(--amber);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+
+  .log-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    max-height: 130px;
+    overflow-y: auto;
+  }
+  .log-card::-webkit-scrollbar { width: 4px; }
+  .log-card::-webkit-scrollbar-track { background: transparent; }
+  .log-card::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .log-line {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .log-line .ep { color: var(--blue); }
+  .log-line .sc { color: var(--green); }
+  .log-line .avg { color: var(--amber); }
+
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<h1 id="status-title" class="stopped">Snake RL — aguardando início</h1>
+
+<div class="layout">
+  <!-- LEFT -->
+  <div class="left">
+    <canvas id="game" width="400" height="400"></canvas>
+    <div class="controls">
+      <button id="btn-start" class="active" onclick="startTraining()">▶ Iniciar</button>
+      <button id="btn-stop" onclick="stopTraining()">⏸ Pausar</button>
+      <button id="btn-reset" class="danger" onclick="resetTraining()">↺ Reiniciar</button>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="stat-label">Episódio</div>
+        <div class="stat-value" id="s-episode">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Score</div>
+        <div class="stat-value green" id="s-score">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Média (50)</div>
+        <div class="stat-value amber" id="s-avg">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Recorde</div>
+        <div class="stat-value" id="s-best">0</div>
+      </div>
+    </div>
+
+    <!-- Epsilon bar -->
+    <div class="epsilon-bar-wrap">
+      <div class="epsilon-row">
+        <span>Exploração (ε-greedy)</span>
+        <span id="eps-val">100%</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" id="eps-bar" style="width:100%"></div>
+      </div>
+    </div>
+
+    <!-- Reward chart -->
+    <div class="chart-card">
+      <div class="chart-label">Score por episódio</div>
+      <canvas id="reward-chart" height="160"></canvas>
+    </div>
+
+    <!-- Log -->
+    <div class="log-card" id="log"></div>
+  </div>
+</div>
+
+<script>
+// ── Canvas setup ──────────────────────────────────────────────
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const CELL   = 20;
+const GW = 20, GH = 20;
+
+function drawGame(data) {
+  ctx.fillStyle = '#0a0c10';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Grid sutil
+  ctx.strokeStyle = '#13161e';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= GW; x++) {
+    ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, GH * CELL); ctx.stroke();
+  }
+  for (let y = 0; y <= GH; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(GW * CELL, y * CELL); ctx.stroke();
+  }
+
+  // Cobra
+  data.snake.forEach(([x, y], i) => {
+    const t = i === 0 ? 1 : 1 - (i / data.snake.length) * 0.65;
+    ctx.fillStyle = i === 0 ? '#22c55e' : `rgba(34,197,94,${t.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.roundRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2, i === 0 ? 4 : 2);
+    ctx.fill();
+  });
+
+  // Comida
+  const [fx, fy] = data.food;
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.arc(fx * CELL + CELL / 2, fy * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Score inline
+  ctx.fillStyle = '#22c55e';
+  ctx.font = '600 12px JetBrains Mono, monospace';
+  ctx.fillText(`score: ${data.score}`, 8, 18);
+}
+
+function drawIdle() {
+  ctx.fillStyle = '#0a0c10';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#252a38';
+  ctx.font = '400 13px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('pressione ▶ Iniciar', canvas.width / 2, canvas.height / 2);
+  ctx.textAlign = 'left';
+}
+drawIdle();
+
+// ── Chart.js ──────────────────────────────────────────────────
+const chartCtx = document.getElementById('reward-chart');
+Chart.defaults.color = '#64748b';
+Chart.defaults.font.family = 'JetBrains Mono, monospace';
+Chart.defaults.font.size = 10;
+
+const rewardChart = new Chart(chartCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: 'Score',
+        data: [],
+        borderColor: '#22c55e',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: true,
+        backgroundColor: 'rgba(34,197,94,0.06)',
+      },
+      {
+        label: 'Média 50',
+        data: [],
+        borderColor: '#f59e0b',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.4,
+        borderDash: [4, 3],
+        fill: false,
+      },
+    ]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: {
+        grid: { color: '#1e2433' },
+        ticks: { color: '#475569', maxTicksLimit: 5 },
+        border: { color: '#252a38' },
+      }
+    }
+  }
+});
+
+function updateChart(history, avgHistory) {
+  const labels = history.map((_, i) => i + 1);
+  rewardChart.data.labels = labels;
+  rewardChart.data.datasets[0].data = history;
+  rewardChart.data.datasets[1].data = avgHistory;
+  rewardChart.update('none');
+}
+
+// Histórico de médias
+let avgHistory = [];
+
+// ── Socket.IO ─────────────────────────────────────────────────
+const socket = io();
+
+socket.on('frame', data => {
+  drawGame(data);
+  document.getElementById('s-episode').textContent = data.episode;
+  setEpsilon(data.epsilon);
+});
+
+socket.on('episode_end', data => {
+  document.getElementById('s-episode').textContent = data.episode;
+  document.getElementById('s-score').textContent   = data.score;
+  document.getElementById('s-avg').textContent     = data.avg_score;
+  document.getElementById('s-best').textContent    = data.best;
+  setEpsilon(data.epsilon);
+
+  // Médias rolling
+  if (data.history.length === 0) { avgHistory = []; }
+  else {
+    const h = data.history;
+    avgHistory = h.map((_, i) => {
+      const slice = h.slice(Math.max(0, i - 49), i + 1);
+      return parseFloat((slice.reduce((a, b) => a + b, 0) / slice.length).toFixed(2));
+    });
+  }
+  updateChart(data.history, avgHistory);
+  addLog(data);
+});
+
+socket.on('status', data => {
+  setRunning(data.running);
+  if (data.episode === 0) {
+    document.getElementById('s-episode').textContent = '0';
+    document.getElementById('s-score').textContent   = '0';
+    document.getElementById('s-avg').textContent     = '0';
+    document.getElementById('s-best').textContent    = '0';
+    setEpsilon(1.0);
+    updateChart([], []);
+    document.getElementById('log').innerHTML = '';
+    drawIdle();
+  }
+});
+
+// ── Helpers ───────────────────────────────────────────────────
+function setEpsilon(e) {
+  const pct = Math.round(e * 100);
+  document.getElementById('eps-val').textContent = pct + '%';
+  document.getElementById('eps-bar').style.width = pct + '%';
+}
+
+function setRunning(r) {
+  const title = document.getElementById('status-title');
+  title.textContent = r ? 'Snake RL — training…' : 'Snake RL — paused';
+  title.className = r ? '' : 'stopped';
+  document.getElementById('btn-start').classList.toggle('active', !r);
+}
+
+let logCount = 0;
+function addLog(data) {
+  if (data.episode === 0) return;
+  logCount++;
+  const log = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML =
+    `<span class="ep">ep ${String(data.episode).padStart(4, '0')}</span>` +
+    `  score=<span class="sc">${data.score}</span>` +
+    `  avg=<span class="avg">${data.avg_score}</span>` +
+    `  ε=${data.epsilon}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  if (logCount > 200) log.removeChild(log.firstChild);
+}
+
+// ── Controles ─────────────────────────────────────────────────
+function startTraining() { socket.emit('start'); }
+function stopTraining()  { socket.emit('stop');  }
+function resetTraining() {
+  if (!confirm('Restart training? The model weights will be reset.')) return;
+  socket.emit('reset');
+}
+</script>
+</body>
+</html>
