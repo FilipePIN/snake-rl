@@ -240,6 +240,20 @@ scores_history = []
 running = False
 training_thread = None
 
+human_mode   = False
+human_action = None
+HUMAN_TICK   = 0.15
+
+DIR_MAP = {'UP': UP, 'DOWN': DOWN, 'LEFT': LEFT, 'RIGHT': RIGHT}
+
+def dir_to_action(current_dir, desired_dir):
+    ci = DIRS.index(current_dir)
+    di = DIRS.index(desired_dir)
+    diff = (di - ci) % 4
+    if diff == 1: return 1   # turn right
+    if diff == 3: return 2   # turn left
+    return 0                 # straight (or ignore reversal)
+
 def training_loop():
     global running
     while running:
@@ -282,6 +296,45 @@ def training_loop():
             })
 
 
+def human_loop():
+    global running, human_action
+    human_scores = []
+    game.reset()
+    episode = 0
+
+    while running:
+        socketio.emit("frame", {
+            **game.get_render_data(),
+            "epsilon": 0.0,
+            "episode": episode,
+        })
+        tick = max(0.05, HUMAN_TICK - game.score * 0.005)
+        time.sleep(tick)
+
+        action = 0
+        if human_action is not None:
+            desired = DIR_MAP.get(human_action)
+            if desired:
+                action = dir_to_action(game.direction, desired)
+
+        _, _, done = game.step(action)
+
+        if done:
+            episode += 1
+            human_scores.append(game.score)
+            avg = round(sum(human_scores[-50:]) / min(len(human_scores), 50), 2)
+            socketio.emit("episode_end", {
+                "episode":   episode,
+                "score":     game.score,
+                "avg_score": avg,
+                "epsilon":   0.0,
+                "best":      max(human_scores),
+                "history":   human_scores[-200:],
+            })
+            game.reset()
+            human_action = None
+
+
 @socketio.on("connect")
 def on_connect():
     emit("status", {"running": running, "episode": agent.episode})
@@ -314,6 +367,28 @@ def on_reset():
         "episode": 0, "score": 0, "avg_score": 0,
         "epsilon": 1.0, "best": 0, "history": []
     })
+
+@socketio.on("set_mode")
+def on_set_mode(data):
+    global running, human_mode, human_action, training_thread
+    mode = data.get("mode")
+    running = False
+    time.sleep(0.2)
+    human_action = None
+    game.reset()
+    if mode == "human":
+        human_mode = True
+        running = True
+        threading.Thread(target=human_loop, daemon=True).start()
+        emit("status", {"running": True, "mode": "human"})
+    else:
+        human_mode = False
+        emit("status", {"running": False, "mode": "ai"})
+
+@socketio.on("human_action")
+def on_human_action(data):
+    global human_action
+    human_action = data.get("dir")
 
 
 HTML_PAGE = open("index.html").read() if __name__ != "__main__" else ""

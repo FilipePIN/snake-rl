@@ -235,6 +235,7 @@
       <button id="btn-start" class="active" onclick="startTraining()">▶ Start</button>
       <button id="btn-stop" onclick="stopTraining()">⏸ Pause</button>
       <button id="btn-reset" class="danger" onclick="resetTraining()">↺ Restart</button>
+      <button id="btn-play" onclick="togglePlay()">🎮 Play</button>
     </div>
   </div>
 
@@ -488,6 +489,49 @@ function stopTraining()  { socket.emit('stop');  }
 function resetTraining() {
   if (!confirm('Restart training? The model weights will be reset.')) return;
   socket.emit('reset');
+}
+
+// ── Human play mode ───────────────────────────────────────────
+let humanMode = false;
+
+const KEY_DIR = {
+  ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
+  w: 'UP', s: 'DOWN', a: 'LEFT', d: 'RIGHT',
+  W: 'UP', S: 'DOWN', A: 'LEFT', D: 'RIGHT',
+};
+
+document.addEventListener('keydown', e => {
+  if (!humanMode) return;
+  const dir = KEY_DIR[e.key];
+  if (dir) { e.preventDefault(); socket.emit('human_action', { dir }); }
+});
+
+function togglePlay() {
+  humanMode = !humanMode;
+  socket.emit('set_mode', { mode: humanMode ? 'human' : 'ai' });
+
+  const btnPlay  = document.getElementById('btn-play');
+  const btnStart = document.getElementById('btn-start');
+  const btnStop  = document.getElementById('btn-stop');
+  const btnReset = document.getElementById('btn-reset');
+
+  btnPlay.classList.toggle('active', humanMode);
+  btnStart.disabled = humanMode;
+  btnStop.disabled  = humanMode;
+  btnReset.disabled = humanMode;
+  btnStart.style.opacity = humanMode ? '0.35' : '';
+  btnStop.style.opacity  = humanMode ? '0.35' : '';
+  btnReset.style.opacity = humanMode ? '0.35' : '';
+
+  const title = document.getElementById('status-title');
+  if (humanMode) {
+    title.textContent = 'Snake RL — human mode (use arrows or WASD)';
+    title.className = '';
+  } else {
+    title.textContent = 'Snake RL — waiting to start';
+    title.className = 'stopped';
+    drawIdle();
+  }
 }
 </script>
 </body>
