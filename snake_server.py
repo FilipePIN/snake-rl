@@ -313,6 +313,7 @@ def fast_training_loop(n_episodes):
             agent.train_step()
             state = next_state
             total_reward += reward
+            socketio.sleep(0)
 
         if fast_running or done:
             socketio.emit("frame", {
