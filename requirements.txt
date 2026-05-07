@@ -1,4 +1,5 @@
-flask 
-flask-socketio 
-torch 
+flask
+flask-socketio
+torch
 numpy
+gunicorn

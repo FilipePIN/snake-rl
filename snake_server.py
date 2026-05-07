@@ -406,4 +406,5 @@ if __name__ == "__main__":
     print(f"  Snake RL Demo  |  PyTorch: {'OK' if TORCH_OK else 'NOT found'}")
     print(f"  Open: http://localhost:5000")
     print("=" * 50)
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(app, host="0.0.0.0", port=port, debug=False)
