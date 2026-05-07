@@ -243,6 +243,7 @@ training_thread = None
 human_mode   = False
 human_action = None
 HUMAN_TICK   = 0.15
+fast_running = False
 
 DIR_MAP = {'UP': UP, 'DOWN': DOWN, 'LEFT': LEFT, 'RIGHT': RIGHT}
 
@@ -294,6 +295,52 @@ def training_loop():
                 "best":     max(scores_history),
                 "history":  scores_history[-200:],
             })
+
+
+def fast_training_loop(n_episodes):
+    global fast_running, scores_history
+    for i in range(n_episodes):
+        if not fast_running:
+            break
+        state = game.reset()
+        done = False
+        total_reward = 0
+
+        while not done and fast_running:
+            action = agent.act(state)
+            next_state, reward, done = game.step(action)
+            agent.remember(state, action, reward, next_state, done)
+            agent.train_step()
+            state = next_state
+            total_reward += reward
+
+        if fast_running or done:
+            socketio.emit("frame", {
+                **game.get_render_data(),
+                "epsilon": round(agent.epsilon, 3),
+                "episode": agent.episode,
+            })
+            agent.update_epsilon()
+            agent.episode += 1
+            scores_history.append(game.score)
+            avg = round(sum(scores_history[-50:]) / min(len(scores_history), 50), 2)
+
+            if agent.episode % TARGET_UPDATE == 0:
+                agent.update_target()
+
+            socketio.emit("episode_end", {
+                "episode":   agent.episode,
+                "score":     game.score,
+                "avg_score": avg,
+                "epsilon":   round(agent.epsilon, 3),
+                "best":      max(scores_history),
+                "history":   scores_history[-200:],
+            })
+            socketio.emit("fast_progress", {"done": i + 1, "total": n_episodes})
+
+    fast_running = False
+    socketio.emit("status", {"running": False, "episode": agent.episode})
+    socketio.emit("fast_done", {})
 
 
 def human_loop():
@@ -350,8 +397,9 @@ def on_start():
 
 @socketio.on("stop")
 def on_stop():
-    global running
+    global running, fast_running
     running = False
+    fast_running = False
     emit("status", {"running": False})
 
 @socketio.on("reset")
@@ -367,6 +415,15 @@ def on_reset():
         "episode": 0, "score": 0, "avg_score": 0,
         "epsilon": 1.0, "best": 0, "history": []
     })
+
+@socketio.on("fast_train")
+def on_fast_train(data):
+    global fast_running
+    if running or fast_running:
+        return
+    n = int(data.get("episodes", 100))
+    fast_running = True
+    threading.Thread(target=fast_training_loop, args=(n,), daemon=True).start()
 
 @socketio.on("set_mode")
 def on_set_mode(data):

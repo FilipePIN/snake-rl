@@ -235,7 +235,17 @@
       <button id="btn-start" class="active" onclick="startTraining()">▶ Start</button>
       <button id="btn-stop" onclick="stopTraining()">⏸ Pause</button>
       <button id="btn-reset" class="danger" onclick="resetTraining()">↺ Restart</button>
+      <button id="btn-fast" onclick="fastTrain()">⚡ Train 100x</button>
       <button id="btn-play" onclick="togglePlay()">🎮 Play</button>
+    </div>
+    <div id="fast-progress" style="display:none; margin-top:4px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;">Express training</span>
+        <span id="fast-label" style="font-family:var(--mono);font-size:11px;color:var(--amber);">0 / 100</span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:3px;overflow:hidden;">
+        <div id="fast-bar" style="height:100%;width:0%;background:var(--amber);border-radius:3px;transition:width 0.2s ease;"></div>
+      </div>
     </div>
   </div>
 
@@ -438,6 +448,15 @@ socket.on('episode_end', data => {
   addLog(data);
 });
 
+socket.on('fast_progress', data => {
+  document.getElementById('fast-label').textContent = `${data.done} / ${data.total}`;
+  document.getElementById('fast-bar').style.width = `${Math.round(data.done / data.total * 100)}%`;
+});
+
+socket.on('fast_done', () => {
+  setFastRunning(false);
+});
+
 socket.on('status', data => {
   setRunning(data.running);
   if (data.episode === 0) {
@@ -464,6 +483,30 @@ function setRunning(r) {
   title.textContent = r ? 'Snake RL — training…' : 'Snake RL — paused';
   title.className = r ? '' : 'stopped';
   document.getElementById('btn-start').classList.toggle('active', !r);
+  const btnFast = document.getElementById('btn-fast');
+  btnFast.disabled = r;
+  btnFast.style.opacity = r ? '0.35' : '';
+}
+
+function setFastRunning(active) {
+  const btns = ['btn-start', 'btn-stop', 'btn-reset', 'btn-play', 'btn-fast'];
+  btns.forEach(id => {
+    const b = document.getElementById(id);
+    b.disabled = active;
+    b.style.opacity = active ? '0.35' : '';
+  });
+  const progress = document.getElementById('fast-progress');
+  if (active) {
+    document.getElementById('fast-label').textContent = '0 / 100';
+    document.getElementById('fast-bar').style.width = '0%';
+    progress.style.display = 'block';
+    const title = document.getElementById('status-title');
+    title.textContent = 'Snake RL — express training…';
+    title.className = '';
+  } else {
+    progress.style.display = 'none';
+    setRunning(false);
+  }
 }
 
 let logCount = 0;
@@ -486,6 +529,10 @@ function addLog(data) {
 // ── Controls ──────────────────────────────────────────────────
 function startTraining() { socket.emit('start'); }
 function stopTraining()  { socket.emit('stop');  }
+function fastTrain() {
+  setFastRunning(true);
+  socket.emit('fast_train', { episodes: 100 });
+}
 function resetTraining() {
   if (!confirm('Restart training? The model weights will be reset.')) return;
   socket.emit('reset');

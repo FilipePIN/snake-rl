@@ -4,6 +4,8 @@ An interactive reinforcement learning demo where a DQN agent learns to play Snak
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue) ![PyTorch](https://img.shields.io/badge/PyTorch-optional-orange) ![Flask](https://img.shields.io/badge/Flask-web--server-lightgrey)
 
+**Live demo:** [https://snake-rl.up.railway.app](https://snake-rl.up.railway.app)
+
 ---
 
 ## Overview
